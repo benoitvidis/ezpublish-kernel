@@ -13,12 +13,12 @@ namespace eZ\Publish\Core\MVC\Symfony\Cache\Http\SignalSlot;
 use eZ\Publish\Core\SignalSlot\Signal;
 
 /**
- * A slot handling DeleteLocationSignal.
+ * A slot handling TrashSignal.
  */
-class DeleteLocationSlot extends PurgeAllHttpCacheSlot
+class TrashSlot extends PurgeAllHttpCacheSlot
 {
     protected function supports(Signal $signal)
     {
-        return $signal instanceof Signal\LocationService\DeleteLocationSignal;
+        return $signal instanceof Signal\TrashService\TrashSignal;
     }
 }
