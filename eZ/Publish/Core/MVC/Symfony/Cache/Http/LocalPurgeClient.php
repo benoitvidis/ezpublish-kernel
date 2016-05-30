@@ -30,9 +30,7 @@ class LocalPurgeClient implements PurgeClientInterface
     }
 
     /**
-     * Triggers the cache purge $cacheElements.
-     *
-     * @param mixed $locationIds Cache resource(s) to purge (e.g. array of URI to purge in a reverse proxy)
+     * @inheritdoc
      */
     public function purge($locationIds)
     {
@@ -50,7 +48,22 @@ class LocalPurgeClient implements PurgeClientInterface
     }
 
     /**
-     * Purges all content elements currently in cache.
+     * @inheritdoc
+     */
+    public function purgeByTags(array $tags)
+    {
+        if (empty($tags)) {
+            return;
+        }
+
+        // TODO: Need to switch to purge and not ban to be able to use soft purge.
+        $purgeRequest = Request::create('http://localhost/', 'BAN');
+        $purgeRequest->headers->set('xkey', '(' . implode('|', $tags) . ')');
+        $this->cacheStore->purgeByRequest($purgeRequest);
+    }
+
+    /**
+     * @inheritdoc
      */
     public function purgeAll()
     {

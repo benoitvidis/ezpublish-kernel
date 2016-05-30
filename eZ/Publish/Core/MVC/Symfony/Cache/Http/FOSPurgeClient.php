@@ -49,8 +49,18 @@ class FOSPurgeClient implements PurgeClientInterface
         $this->cacheManager->invalidate(array('X-Location-Id' => '^(' . implode('|', $locationIds) . ')$'));
     }
 
+    public function purgeByTags(array $tags)
+    {
+        if (empty($tags)) {
+            return;
+        }
+
+        // TODO: Need to switch to purge and not ban to be able to use soft purge.
+        $this->cacheManager->invalidate(array('xkey' => '^(' . implode('|', $tags) . ')$'));
+    }
+
     public function purgeAll()
     {
-        $this->cacheManager->invalidate(array('X-Location-Id' => '.*'));
+        $this->cacheManager->invalidate(array('xkey' => '.*'));
     }
 }

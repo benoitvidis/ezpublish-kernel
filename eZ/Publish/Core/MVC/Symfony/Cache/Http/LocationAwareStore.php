@@ -15,14 +15,14 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Filesystem\Exception\IOException;
+use Symfony\Component\Finder\Finder;
 
 /**
  * LocationAwareStore implements all the logic for storing cache metadata regarding locations.
  */
-class LocationAwareStore extends Store implements ContentPurger
+class TagAwareStore extends Store implements ContentPurger
 {
-    const LOCATION_CACHE_DIR = 'ezlocation',
-          LOCATION_STALE_CACHE_DIR = 'ezlocation_stale';
+    const TAG_CACHE_DIR = 'ezcachetag';
 
     /**
      * @var \Symfony\Component\Filesystem\Filesystem
@@ -55,75 +55,78 @@ class LocationAwareStore extends Store implements ContentPurger
     }
 
     /**
-     * Injects eZ Publish specific information in the content digest if needed.
-     * X-Location-Id response header is set in the ViewController.
+     * Writes a cache entry to the store for the given Request and Response.
      *
-     * @see \eZ\Publish\Core\MVC\Symfony\Controller\Content\ViewController::viewLocation()
+     * Existing entries are read and any that match the response are removed. This
+     * method calls write with the new list of cache entries.
      *
-     * @param \Symfony\Component\HttpFoundation\Response $response
+     * @param Request  $request  A Request instance
+     * @param Response $response A Response instance
      *
-     * @return string
+     * @return string The key under which the response is stored
+     *
+     * @throws \RuntimeException
      */
-    protected function generateContentDigest(Response $response)
+    public function write(Request $request, Response $response)
     {
-        $digest = parent::generateContentDigest($response);
-        if (!$response->headers->has('X-Location-Id')) {
-            return $digest;
+        parent::write($request, $response);
+
+        $digest = $response->headers->get('X-Content-Digest');
+        if ($request->headers->has('xkey')) {
+            $tags = explode(', ', $request->headers->get('xkey'));
+        } else {
+            $tags = [];
         }
 
-        return static::LOCATION_CACHE_DIR . "/{$response->headers->get('X-Location-Id')}/$digest";
+        if ($request->headers->has('X-Location-Id')) {
+            $tags[] = 'location-' . $request->headers->get('X-Location-Id');
+        }
+
+        foreach (array_unique($tags) as $tag) {
+            if (false === $this->saveTag($tag, $digest)) {
+                throw new \RuntimeException('Unable to store the cache tag meta information.');
+            }
+        }
     }
 
     /**
-     * Returns the right path where cache is being stored.
-     * Will detect if $key is eZ Publish specific.
+     * Save digest for the given tag.
      *
-     * @param string $key
+     * @internal This is almost verbatim copy of save() from parent class as it is private.
      *
-     * @return string
+     * @param string $tag    The tag key
+     * @param string $digest The digest hash to store representing the cache item.
+     *
+     * @return bool|void
      */
-    public function getPath($key)
+    private function saveTag($tag, $digest)
     {
-        if (strpos($key, static::LOCATION_CACHE_DIR) === false) {
-            return parent::getPath($key);
+        $path = $this->getPath($this->getCacheTagDir($tag));
+        if (!is_dir(dirname($path)) && false === @mkdir(dirname($path), 0777, true) && !is_dir(dirname($path))) {
+            return false;
         }
 
-        $prefix = '';
-        if (($pos = strrpos($key, '/')) !== false) {
-            $prefix = substr($key, 0, $pos) . DIRECTORY_SEPARATOR;
-            $key = substr($key, $pos + 1);
+        $tmpFile = tempnam(dirname($path), basename($path));
+        if (false === $fp = @fopen($tmpFile, 'wb')) {
+            return false;
+        }
+        @fwrite($fp, $digest);
+        @fclose($fp);
 
-            list($locationCacheDir, $locationId) = explode('/', $prefix);
-            unset($locationCacheDir);
-            // If cache purge is in progress, serve stale cache instead of regular cache.
-            // We first check for a global cache purge, then for the current location.
-            foreach (array($this->getLocationCacheLockName(), $this->getLocationCacheLockName($locationId)) as $cacheLockFile) {
-                if (is_file($cacheLockFile)) {
-                    if (function_exists('posix_kill')) {
-                        // Check if purge process is still running. If not, remove the lock file to unblock future cache purge
-                        if (!posix_kill(file_get_contents($cacheLockFile), 0)) {
-                            $fs = $this->getFilesystem();
-                            $fs->remove(array($cacheLockFile, $this->getLocationCacheDir($locationId)));
-                            goto returnCachePath;
-                        }
-                    }
-
-                    $prefix = str_replace(static::LOCATION_CACHE_DIR, static::LOCATION_STALE_CACHE_DIR, $prefix);
-                }
-            }
+        if ($digest != file_get_contents($tmpFile)) {
+            return false;
         }
 
-        returnCachePath:
-        return $this->root . DIRECTORY_SEPARATOR . $prefix .
-           substr($key, 0, 2) . DIRECTORY_SEPARATOR .
-           substr($key, 2, 2) . DIRECTORY_SEPARATOR .
-           substr($key, 4, 2) . DIRECTORY_SEPARATOR .
-           substr($key, 6);
+        if (false === @rename($tmpFile, $path)) {
+            return false;
+        }
+
+        @chmod($path, 0666 & ~umask());
     }
 
     /**
      * Purges data from $request.
-     * If X-Location-Id or X-Group-Location-Id header is present, the store will purge cache for given locationId or group of locationIds.
+     * If xkey or X-Location-Id (deprecated) header is present, the store will purge cache for given locationId or group of locationIds.
      * If not, regular purge by URI will occur.
      *
      * @param \Symfony\Component\HttpFoundation\Request $request
@@ -132,29 +135,34 @@ class LocationAwareStore extends Store implements ContentPurger
      */
     public function purgeByRequest(Request $request)
     {
-        if (!$request->headers->has('X-Location-Id')) {
+        if (!$request->headers->has('X-Location-Id') && !$request->headers->has('xkey')) {
             return $this->purge($request->getUri());
         }
 
-        // Purge everything
+        // Deprecated, see purgeAllContent(): Purge everything
         $locationId = $request->headers->get('X-Location-Id');
         if ($locationId === '*' || $locationId === '.*') {
             return $this->purgeAllContent();
         }
 
-        if ($locationId[0] === '(' && substr($locationId, -1) === ')') {
-            // (123|456|789) => Purge for #123, #456 and #789 location IDs.
-            $aLocationId = explode('|', substr($locationId, 1, -1));
+        if ($request->headers->has('xkey')) {
+            $tags = explode(', ', $request->headers->get('xkey'));
+        } else if ($locationId[0] === '(' && substr($locationId, -1) === ')') {
+            // Deprecated: (123|456|789) => Purge for #123, #456 and #789 location IDs.
+            $tags = array_map(
+                function($id){return 'location-' . $id;},
+                explode('|', substr($locationId, 1, -1))
+            );
         } else {
-            $aLocationId = array($locationId);
+            $tags = array('location-' . $locationId);
         }
 
-        if (empty($aLocationId)) {
+        if (empty($tags)) {
             return false;
         }
 
-        foreach ($aLocationId as $locationId) {
-            $this->purgeLocation($locationId);
+        foreach ($tags as $tag) {
+            $this->purgeByCacheTag($tag);
         }
 
         return true;
@@ -163,89 +171,65 @@ class LocationAwareStore extends Store implements ContentPurger
     /**
      * Purges all cached content.
      *
+     * @deprecated Use cache:clear, with multi tagging theoretically there shouldn't be need to delete all anymore from core.
+     *
      * @return bool
      */
     public function purgeAllContent()
     {
-        return $this->purgeLocation(null);
+        $cacheTagsCacheDir = $this->getCacheTagDir();
+        $this->getFilesystem()->remove($cacheTagsCacheDir);
     }
 
     /**
-     * Purges cache for $locationId.
+     * Purges cache for tag.
      *
-     * @param int|null $locationId. If null, all locations will be purged.
+     * @param string $tag
      *
      * @return bool
      */
-    private function purgeLocation($locationId)
+    private function purgeByCacheTag($tag)
     {
         $fs = $this->getFilesystem();
-        $locationCacheDir = $this->getLocationCacheDir($locationId);
-        if ($fs->exists($locationCacheDir)) {
-            // 1. Copy cache files to stale cache dir
-            // 2. Place a lock file indicating to use the stale cache
-            // 3. Remove real cache dir
-            // 4. Remove lock file
-            // 5. Remove stale cache dir
-            // Note that there is no need to remove the meta-file
-            $staleCacheDir = str_replace(static::LOCATION_CACHE_DIR, static::LOCATION_STALE_CACHE_DIR, $locationCacheDir);
-            $fs->mkdir($staleCacheDir);
-            $fs->mirror($locationCacheDir, $staleCacheDir);
-            $lockFile = $this->getLocationCacheLockName($locationId);
-            file_put_contents($lockFile, getmypid());
-            try {
-                // array of removal is in reverse order on purpose since remove() starts from the end.
-                $fs->remove(array($staleCacheDir, $lockFile, $locationCacheDir));
-
-                return true;
-            } catch (IOException $e) {
-                // Log the error in the standard error log and at least try to remove the lock file
-                error_log($e->getMessage());
-                @unlink($lockFile);
-
-                return false;
-            }
+        $cacheTagsCacheDir = $this->getCacheTagDir($tag);
+        if (!$fs->exists($cacheTagsCacheDir)) {
+            return false;
         }
 
-        return false;
+        $files = Finder::create()->files()->in($cacheTagsCacheDir)->getIterator();
+        try {
+            foreach ($files as $file) {
+                if ($digest = file_get_contents($file)) {
+                    $fs->remove($this->getPath($digest));
+                }
+            }
+            $fs->remove($files);
+            // we let folder stay in case another process have just written new cache tags
+        } catch (IOException $e) {
+            // Log the error in the standard error log and at least try to remove the lock file
+            error_log($e->getMessage());
+
+            return false;
+        }
     }
 
     /**
-     * Returns cache lock name for $locationId.
+     * Returns cache dir for $tag.
      *
      * This method is public only for unit tests.
      * Use it only if you know what you are doing.
      *
      * @internal
      *
-     * @param int $locationId. If null, will return a global cache lock name (purging all content)
+     * @param int $tag
      *
      * @return string
      */
-    public function getLocationCacheLockName($locationId = null)
+    public function getCacheTagDir($tag = null)
     {
-        $locationId = $locationId ?: 'all';
-
-        return "$this->root/_ezloc_$locationId.purging";
-    }
-
-    /**
-     * Returns cache dir for $locationId.
-     *
-     * This method is public only for unit tests.
-     * Use it only if you know what you are doing.
-     *
-     * @internal
-     *
-     * @param int $locationId
-     *
-     * @return string
-     */
-    public function getLocationCacheDir($locationId = null)
-    {
-        $cacheDir = "$this->root/" . static::LOCATION_CACHE_DIR;
-        if ($locationId) {
-            $cacheDir .= "/$locationId";
+        $cacheDir = "$this->root/" . static::TAG_CACHE_DIR;
+        if ($tag) {
+            $cacheDir .= "/$tag";
         }
 
         return $cacheDir;

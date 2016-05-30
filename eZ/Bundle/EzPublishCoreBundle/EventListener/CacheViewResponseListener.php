@@ -62,7 +62,15 @@ class CacheViewResponseListener implements EventSubscriberInterface
         $response = $event->getResponse();
 
         if ($view instanceof LocationValueView && ($location = $view->getLocation()) instanceof Location) {
-            $response->headers->set('X-Location-Id', $location->id, false);
+            $response->headers->set(
+                'xkey',
+                'content-' . $location->contentId
+                . ', location-' . $location->id
+                . ', parent-' . $location->parentLocationId
+                . ', path-' . implode(', path-', $location->path )
+                . ', content-type-' . $location->getContentInfo()->contentTypeId,
+                false
+            );
         }
 
         $response->setPublic();
