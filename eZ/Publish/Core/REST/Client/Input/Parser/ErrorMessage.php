@@ -42,10 +42,11 @@ class ErrorMessage extends BaseParser
      */
     public function parse(array $data, ParsingDispatcher $parsingDispatcher)
     {
-        if (isset($this->errorCodeMapping[$data['errorCode']])) {
+        /* TODO: Remove or adapt, mapping to custom exception throws away vital debug info from server (trace, file, line)
+         if (isset($this->errorCodeMapping[$data['errorCode']])) {
             $exceptionClass = $this->errorCodeMapping[$data['errorCode']];
             return new $exceptionClass($data['errorDescription'], $data['errorCode']);
-        }
+        }*/
 
         return new ErrorMessageValue([
             'code' => $data['errorCode'],

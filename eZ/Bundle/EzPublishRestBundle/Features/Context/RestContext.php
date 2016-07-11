@@ -18,6 +18,7 @@ use EzSystems\BehatBundle\Helper\Gherkin as GherkinHelper;
 use eZ\Publish\Core\Base\Exceptions\InvalidArgumentException;
 use Behat\Gherkin\Node\TableNode;
 use PHPUnit_Framework_Assert as Assertion;
+use Exception;
 
 /**
  * RestContext is the core of the REST testing
@@ -222,7 +223,18 @@ class RestContext extends Context implements MinkAwareContext
 
 Exception ({$errorMessage->code}): {$errorMessage->description}
 
+{$errorMessage->file}:{$errorMessage->line}
+
 {$errorMessage->trace}
+EOF;
+            } elseif ($errorMessage instanceof Exception) {
+                $exceptionMessage = <<< EOF
+
+Exception ({$errorMessage->getCode()}): {$errorMessage->getMessage()}
+
+{$errorMessage->getFile()}:{$errorMessage->getLine()}
+
+<trace skipped as this would be client trace and not server trace>
 EOF;
             }
         }
