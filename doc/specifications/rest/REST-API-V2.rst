@@ -226,6 +226,11 @@ Resource                                                          POST          
 /                                                                 .                   list root resources     .                            .
 /content/objects                                                  create new content  .                       .                            .
 /content/objects/<ID>                                             .                   load content            update content meta data     delete content   copy content
+/content/objects/<ID>/permissions/<userhash>                      .                   load content and        .                            .                .
+                                                                                      permissions
+/content/objects/<ID>/permissions/<userhash>/locations/<path>     .                   load content and        .                            .                .
+                                                                                      permissions for given
+                                                                                      location
 /content/objects/<ID>/<lang_code>                                 .                   .                       .                            delete language
                                                                                                                                            from content
 /content/objects/<ID>/versions                                    .                   load all versions       .                            .
@@ -880,6 +885,91 @@ XML Example
       <mainLanguageCode>eng-US</mainLanguageCode>
       <currentVersionNo>1</currentVersionNo>
       <alwaysAvailable>true</alwaysAvailable>
+    </Content>
+
+Load Content and permissions
+````````````````````````````
+:Resource: /content/objects/<ID>/permissions/<userhash>
+:Method: GET
+:Description: Loads the content object for the given id, including permissions on the object for the given user hash. Depending on the Accept header the current version is embedded (i.e the current published version or if not exists the draft of the authenticated user)
+:Headers:
+    :Accept:
+         :application/vnd.ez.api.Content+xml:  if set all informations for the content object including the embedded current version are returned in xml format (see Content_)
+         :application/vnd.ez.api.Content+json:  if set all informations for the content object including the embedded current version are returned in json format (see Content_)
+         :application/vnd.ez.api.ContentInfo+xml:  if set all informations for the content object (excluding the current version) are returned in xml format (see Content_)
+         :application/vnd.ez.api.ContentInfo+json:  if set all informations for the content object (excluding the current version) are returned in json format (see Content_)
+    :If-None-Match: <etag> If the provided etag matches the current etag then a 304 Not Modified is returned. The etag changes if the meta data was changed - this happens also if there is a new published version.
+:Parameters:
+    :languages: (comma separated list) restricts the output of translatable fields to the given languages
+:Response:
+
+
+.. code:: http
+
+          HTTP/1.1 200 OK
+          ETag: "<ETag>"
+          Accept-Patch: application/vnd.ez.api.ContentUpdate+(json|xml)
+          Content-Type: <depending on accept header>
+          Content-Length: <length>
+.. parsed-literal::
+Content_
+
+:Error Codes:
+    :401: If the user is not authorized to read  this object. This could also happen if there is no published version yet and another user owns a draft of this content
+    :404: If the ID or the user hash is not found
+
+XML Example
+'''''''''''
+
+.. code:: http
+
+    GET /content/objects/23/permissions/38015b703d82206ebc01d17a39c727e5 HTTP/1.1
+    Accept: application/vnd.ez.api.ContentInfo+xml
+    If-None-Match: "12340577"
+
+.. code:: http
+
+    HTTP/1.1 200 OK
+    ETag: "12345678"
+    Accept-Patch: application/vnd.ez.api.ContentUpdate+xml;charset=utf8
+    Content-Type: application/vnd.ez.api.ContentInfo+xml
+    Content-Length: xxx
+
+.. code:: xml
+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Content href="/content/objects/23" id="23"
+      media-type="application/vnd.ez.api.Content+xml" remoteId="qwert123">
+      <ContentType href="/content/types/10" media-type="application/vnd.ez.api.ContentType+xml" />
+      <Name>This is a title</Name>
+      <Versions href="/content/objects/23/versions" media-type="application/vnd.ez.api.VersionList+xml" />
+      <CurrentVersion href="/content/objects/23/currentversion"
+        media-type="application/vnd.ez.api.Version+xml"/>
+      <Section href="/content/sections/4" media-type="application/vnd.ez.api.Section+xml" />
+      <MainLocation href="/content/locations/1/4/65" media-type="application/vnd.ez.api.Location+xml" />
+      <Locations href="/content/objects/23/locations" media-type="application/vnd.ez.api.LocationList+xml" />
+      <Owner href="/user/users/14" media-type="application/vnd.ez.api.User+xml" />
+      <lastModificationDate>2012-02-12T12:30:00</lastModificationDate>
+      <publishedDate>2012-02-12T15:30:00</publishedDate>
+      <mainLanguageCode>eng-US</mainLanguageCode>
+      <currentVersionNo>1</currentVersionNo>
+      <alwaysAvailable>true</alwaysAvailable>
+      <ContentPermissions>
+        <canRead>true</canRead>
+        <canEdit>
+          <Languages>
+            <Language>eng-GB</Language>
+            <Language>nor-NO</Language>
+          </Languages>
+        </canEdit>
+        <canRemove>false</canRemove>
+        <canCreate>
+          <ContentTypes>
+            <ContentType href="/content/types/1" media-type="application/vnd.ez.api.ContentType+xml" />
+            <ContentType href="/content/types/16" media-type="application/vnd.ez.api.ContentType+xml" />
+          </ContentTypes>
+        </canCreate>
+      </ContentPermissions>
     </Content>
 
 
