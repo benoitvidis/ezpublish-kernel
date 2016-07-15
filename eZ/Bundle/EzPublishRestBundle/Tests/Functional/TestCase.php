@@ -81,8 +81,7 @@ class TestCase extends PHPUnit_Framework_TestCase
                 $errorMessageString = $body->errorDescription;
             } elseif (strpos($response->getHeader('Content-Type'), 'application/vnd.ez.api.ErrorMessage+json') !== false) {
                 $body = json_decode($response->getContent());
-                $errorMessageString = "Error message: {$body->ErrorMessage->errorDescription}\n" .
-                    "In {$body->ErrorMessage->file}:{$body->ErrorMessage->line}";
+                $errorMessageString = 'Error message: ' . var_export($body, true);
             }
 
             self::assertEquals($expected, $responseCode, $errorMessageString);
