@@ -920,14 +920,14 @@ XML Example
 .. code:: http
 
     GET /content/objects/23/permissions HTTP/1.1
-    Accept: application/vnd.ez.api.ContentPermissions+xml
+    Accept: application/vnd.ez.api.ContentPermissionsInfo+xml
     If-None-Match: "12340577"
 
 .. code:: http
 
     HTTP/1.1 200 OK
     ETag: "12345678"
-    Content-Type: application/vnd.ez.api.ContentPermissions+xml
+    Content-Type: application/vnd.ez.api.ContentPermissionsInfo+xml
     Content-Length: xxx
 
 .. code:: xml
