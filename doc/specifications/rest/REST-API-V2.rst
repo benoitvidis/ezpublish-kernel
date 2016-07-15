@@ -228,8 +228,6 @@ Resource                                                          POST          
 /content/objects/<ID>                                             .                   load content            update content meta data     delete content   copy content
 /content/objects/<ID>/<lang_code>                                 .                   .                       .                            delete language
                                                                                                                                            from content
-/content/objects/<ID>/permissions                                 .                   load content and        .                            .                .
-                                                                                      permissions
 /content/objects/<ID>/versions                                    .                   load all versions       .                            .
                                                                                       (version infos)
 /content/objects/<ID>/currentversion                              .                   redirect to current v.  .                            .                 create draft
@@ -245,6 +243,10 @@ Resource                                                          POST          
 /content/locations                                                .                   list/find locations     .                            .
 /content/locations/<path>                                         .                   load a location         update location              delete location  copy subtree
 /content/locations/<path>/children                                .                   load children           .                            .
+/content/permissions/objects/<ID>                                 .                   load permissions for    .                            .                .
+                                                                                      content
+/content/permissions/locations/<path>                             .                   load permissions for    .                            .
+                                                                                      location
 /views                                                            create view         list views              .                            .
 /content/views                                                    create view         list views              .                            .
 /content/views/<ID>                                               .                   get view                .                            delete view
@@ -884,9 +886,9 @@ XML Example
       <alwaysAvailable>true</alwaysAvailable>
     </Content>
 
-Load Content and permissions
+Load Permissions for Content
 ````````````````````````````
-:Resource: /content/objects/<ID>/permissions
+:Resource: /content/permissions/objects/<ID>
 :Method: GET
 :Description: Loads the permissions for the content object with the given id, for the current user. Depending on the Accept header the content object is embedded.
 :Headers:
@@ -919,7 +921,7 @@ XML Example
 
 .. code:: http
 
-    GET /content/objects/23/permissions HTTP/1.1
+    GET /content/permissions/objects/23 HTTP/1.1
     Accept: application/vnd.ez.api.ContentPermissionsInfo+xml
     If-None-Match: "12340577"
 
@@ -933,7 +935,7 @@ XML Example
 .. code:: xml
 
     <?xml version="1.0" encoding="UTF-8"?>
-    <ContentPermissions href="/content/objects/23/permissions"
+    <ContentPermissions href="/content/permissions/objects/23"
       media-type="application/vnd.ez.api.ContentPermissions+xml">
       <Content href="/content/objects/23" media-type="application/vnd.ez.api.Content+xml"/>
       <canRead>true</canRead>
@@ -1972,6 +1974,72 @@ XML Example
       <UrlAliases media-type="application/vnd.ez.api.UrlAliasRefList+xml" href="/api/ezp/v2/content/locations/1/4/73/133/urlaliases"/>
     </Location>
 
+Load Permissions for Location
+`````````````````````````````
+:Resource: /content/permissions/locations/<path>
+:Method: GET
+:Description: loads the permissions for the location of the given path, for the current user. Depending on the Accept header the location is embedded.
+:Headers:
+    :Accept:
+        :application/vnd.ez.api.LocationPermissions+xml:  if set the permissions for the location, with the location embedded, is returned in xml format (see Location_)
+        :application/vnd.ez.api.LocationPermissions+json:  if set the permissions for the location, with the location embedded, is returned in json format (see Location_)
+        :application/vnd.ez.api.LocationPermissionsInfo+xml:  if set the permissions for the location is returned in xml format (see Location_)
+        :application/vnd.ez.api.LocationPermissionsInfo+json:  if set the permissions for the location is returned in json format (see Location_)
+    :If-None-Match: <etag>
+:Response:
+
+.. code:: http
+
+          HTTP/1.1 200 OK
+          Location: /content/permissions/locations/<path>
+          ETag: "<new etag>"
+          Content-Type: <depending on accept header>
+          Content-Length: <length>
+.. parsed-literal::
+Location_
+
+:Error Codes:
+    :404: If the location with the given path does not exist
+    :401: If the user is not authorized to read this location
+
+XML Example
+'''''''''''
+
+.. code:: http
+
+    GET /content/permissions/locations/1/4/73/133 HTTP/1.1
+    Host: api.example.net
+    Accept: application/vnd.ez.api.LocationPermissionsInfo+xml
+    If-None-Match: "2345503255"
+
+.. code:: http
+
+    HTTP/1.1 200 OK
+    ETag: "2345563422"
+    Content-Type: application/vnd.ez.api.LocationPermissionsInfo+xml
+    Content-Length: xxx
+
+.. code:: xml
+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <LocationPermissions href="/content/permissions/locations/1/4/73/133"
+      media-type="application/vnd.ez.api.LocationPermissions+xml">
+      <Location href="/content/locations/1/4/73/133" media-type="application/vnd.ez.api.Location+xml" />
+      <canRead>true</canRead>
+      <canEdit>
+        <Languages>
+          <Language>eng-GB</Language>
+          <Language>nor-NO</Language>
+        </Languages>
+      </canEdit>
+      <canRemove>true</canRemove>
+      <canCreate>
+        <ContentTypes>
+          <ContentType href="/content/types/1" media-type="application/vnd.ez.api.ContentType+xml" />
+          <ContentType href="/content/types/16" media-type="application/vnd.ez.api.ContentType+xml" />
+        </ContentTypes>
+      </canCreate>
+    </LocationPermissions>
 
 Update location
 ```````````````
